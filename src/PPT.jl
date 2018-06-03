@@ -1,3 +1,5 @@
+__precompile__()
+
 module PPT
 
 const codefile = joinpath(dirname(@__FILE__), "literate_org_tangled_code.jl")

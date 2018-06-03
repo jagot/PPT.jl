@@ -3,3 +3,238 @@
 #+EMAIL: stefanos.carlstrom@gmail.com
 
 #+PROPERTY: header-args:julia :session *julia-PPT*
+
+#+BEGIN_SRC julia
+  using Cubature
+  using Unitful
+#+END_SRC
+
+#+RESULTS:
+: nothing
+
+* Unit conversions
+  #+BEGIN_SRC julia
+    @derived_dimension ElectricField Unitful.𝐈^-1*Unitful.𝐋*Unitful.𝐌*Unitful.𝐓^-3
+    @derived_dimension Intensity Unitful.𝐌*Unitful.𝐓^-3
+
+    atomic_units(E::ElectricField) = E/(5.14220651e11u"V"/u"m") |> NoUnits
+    atomic_units(I::Intensity) = I/(3.5094452e16u"W"/u"cm"^2) |> NoUnits
+    atomic_units(t::Unitful.Time) = t/2.41888430u"as" |> NoUnits
+    atomic_units(Wk::Unitful.Energy) = Wk/27.211u"eV" |> NoUnits
+  #+END_SRC
+
+  #+RESULTS:
+  : atomic_units (generic function with 4 methods)
+
+* Atomic data
+  #+BEGIN_SRC julia :results verbatim
+    Iₚ = Dict(:argon => 15.7596/27.211, :neon => 21.5645/27.211, :helium => 24.587387/27.211)
+    nstar = Dict(k => 1/√(2v) for (k,v) in Iₚ)
+    ℓ = Dict(:argon => 1, :neon => 1, :helium => 1); # Is 1 right for helium?
+  #+END_SRC
+
+  #+RESULTS:
+  : Dict{Symbol,Int64} with 3 entries:
+  :   :neon => 1
+  :   :argon => 1
+  :   :helium => 1
+
+* Minor helper functions
+  All functions work in atomic units, unless otherwise
+  specified. Equation references are wrt to 
+
+  - Perelomov, A., Popov, V., & Terent'ev, M. (1966). Ionization of
+    atoms in an alternating electric field. Soviet Physics---Journal of
+    Experimental and Theoretical Physics, 23(5), 924–934,
+
+  or, if specified,
+
+  - Ammosov, M. V., Delone, N. B., & Krainov, V. P. (1986). Tunnel
+    ionization of complex atoms and of atomic ions in alternating
+    electromagnetic field. Soviet Physics---Journal of Experimental and
+    Theoretical Physics, 64(), 1191–1194.
+
+  #+BEGIN_SRC julia
+    Γ = Base.gamma
+
+    # Eq. (19) of ADK
+    C²(n, ℓ) = 2.0^(2n)/(n*Γ(n+ℓ+1)*Γ(n-ℓ))
+
+    # Eq. (4)
+    function f(ℓ::Integer,m::Integer)
+        ℓ >= 0 || error("Invalid value of ℓ ($(ℓ) < 0)")
+        abs(m) <= ℓ || error("Invalid value of m ($(abs(m)) > $(ℓ))")
+        (2ℓ+1)*factorial(ℓ+abs(m))/(2^abs(m)*factorial(abs(m))*factorial(ℓ-abs(m)))
+    end
+
+    Uₚ(I,ω) = I/4ω^2
+
+    keldysh(element,Uₚ) = √(Iₚ[element]/2Uₚ)
+    keldysh(element,I,ω) = keldysh(element,Uₚ(I,ω))
+
+    # Just after Eq. (56)
+    ppt_β(γ) = 2γ/sqrt(1+γ^2)
+    # Eq. (34)
+    α(γ) = 2asinh.(γ) - ppt_β.(γ)
+    # Eq. (33)
+    g(γ) = 3./(2γ).*((1+1./(2γ.^2)).*asinh.(γ) - (sqrt.(1+γ.^2))./(2γ))
+    # Eq. (26), Iₚ = κ²/2
+    ν(element, I, ω) = Iₚ[element]/ω * (1.0 + 1./2keldysh.(element,I,ω).^2)
+
+    # Eq. (56)
+    function w(m,x,eps=1e-7)
+        val,err = hquadrature(t -> exp(-x^2*t)*t^abs(m)/√(1-t), 0, 1-eps)
+        x^(2abs(m)+1)/2*val
+    end
+
+    # Eq. (55)
+    function A(m,element,I,ω, tol = 1e-5)
+        γ = keldysh.(element,I,ω)
+        nν = ν(element, I, ω)
+        S = 0
+        dS = Inf
+        κ = ceil(Int, nν)
+        ii = 0
+        α_γ = α(γ)
+        ppt_β_γ = ppt_β.(γ)
+        while dS/S > tol
+            dk = κ - nν
+            dS = exp(-α_γ*dk)*w(m,√(ppt_β_γ*dk))
+            S += dS
+            κ += 1
+            ii += 1
+        end
+        (4/√(3π))/factorial(abs(m)) * γ^2/(1+γ^2) * S
+    end
+
+    Ẽ(E₀, Iₚ) = E₀/(2(2Iₚ)^1.5)
+  #+END_SRC
+
+  #+RESULTS:
+  : Ẽ (generic function with 1 method)
+
+* PPT
+  #+BEGIN_SRC julia
+    """
+        ppt(element, I, ω[, m=0])
+
+    Calculate the ionization rate (in atomic units) of `element` according
+    to the Perelomov–Popov–Terent'ev formalism over the intensity range `I`
+    (in atomic units), for a photon energy `ω` (in atomic units), and the
+    projection `m` of the initial orbital angular momentum."""
+    function ppt(element::Symbol, I::AbstractVector{<:Real}, ω::Real, m::Integer=0)
+        E = sqrt.(I)
+        γ = keldysh.(element,I,ω)
+
+        ns = nstar[element]
+        pre = sqrt(3/2pi)*C²(ns,ns-1)*f(ℓ[element],m)*Iₚ[element]
+        Et = Ẽ(E, Iₚ[element])
+
+        Am = A.(0, element, I, ω)
+
+        w = pre*Et.^(-(2ns-abs(m)-3/2)).*(1+γ.^2).^(-ns+abs(m)/2+3/4).*Am.*exp.(-g(γ)./(3Et))
+        w[isnan.(w)] = 0
+        w
+    end
+
+    """
+        ppt(element, I, ω[, m=0])
+
+    Calculate the ionization rate (in SI units, Hz) of `element` according
+    to the Perelomov–Popov–Terent'ev formalism over the intensity range `I`
+    (in SI units, W/cm²), for a photon energy `ω` (in SI units, energy),
+    and the projection `m` of the initial orbital angular momentum."""
+    ppt(element::Symbol, I::AbstractVector{<:Intensity}, ω::Unitful.Energy, m::Integer=0) =
+        ppt(element, atomic_units.(I), atomic_units(ω), m)/2.41888430u"as"
+
+    export ppt
+  #+END_SRC
+
+  #+RESULTS:
+  : nothing
+
+* ADK
+  #+BEGIN_SRC julia
+    """
+        adk(element, I, ω[, m=0])
+
+    Calculate the ionization rate (in atomic units) of `element` according
+    to the Ammosov–Delone–Kraĭnov formalism over the intensity range `I`
+    (in atomic units), for a photon energy `ω` (in atomic units), and the
+    projection `m` of the initial orbital angular momentum."""
+    function adk(element::Symbol, I::AbstractVector{<:Real}, ω::Real, m::Integer=0)
+        E = sqrt.(I)
+        ns = nstar[element]
+        pre = C²(ns,ns-1)*f(ℓ[element],m)*Iₚ[element]
+        Et = Ẽ(E, Iₚ[element])
+        w = pre*Et.^(-(2ns-abs(m)-1)).*exp(-1.0./(3Et))
+        w[isnan.(w)] = 0
+        w
+    end
+
+    """
+        adk(element, I, ω[, m=0])
+
+    Calculate the ionization rate (in SI units, Hz) of `element` according
+    to the Ammosov–Delone–Kraĭnov formalism over the intensity range `I`
+    (in SI units, W/cm²), for a photon energy `ω` (in SI units, energy),
+    and the projection `m` of the initial orbital angular momentum."""
+    adk(element::Symbol, I::AbstractVector{<:Intensity}, ω::Unitful.Energy, m::Integer=0) =
+        adk(element, atomic_units.(I), atomic_units(ω), m)/2.41888430u"as" .|> u"Hz"
+
+    export adk
+  #+END_SRC
+
+  #+RESULTS:
+  : nothing
+
+* Ionization probability
+  #+BEGIN_SRC julia
+    function probability(rate::Function,
+                         t, E, ω,
+                         element, m)
+        dt = (t[2]-t[1])*2π/ω
+        1.0 - exp(-sum(rate(element, abs2.(E), ω, m))*dt)
+    end
+  #+END_SRC
+
+  #+RESULTS:
+  : probability (generic function with 1 method)
+
+* EXAMPLE Usage
+  #+BEGIN_SRC julia
+    I = logspace(12,15, 1001)*u"W/cm^2";
+    ω = 1.5u"eV"
+
+    ppt_rate = ppt(:argon, I, ω, 0) .|> u"PHz";
+    adk_rate = adk(:argon, I, ω, 0) .|> u"PHz";
+  #+END_SRC
+
+  #+RESULTS:
+
+  #+BEGIN_SRC julia :exports results :results value file
+    using PyPlot
+
+    function savefig_f(filename)
+        path = joinpath("..", "figures", "$(filename).svg")
+        mkpath(dirname(path))
+        savefig(path, transparent=true)
+        path
+    end
+
+    figure("Ionization rate")
+    clf()
+    loglog(I./u"W/cm^2" .|> NoUnits, ppt_rate./u"PHz" .|> NoUnits, label="PPT")
+    yl = ylim()
+    loglog(I./u"W/cm^2" .|> NoUnits, adk_rate./u"PHz" .|> NoUnits, label="ADK")
+    ylim(yl...)
+    xlabel(L"Intensity [W/cm$^2$]")
+    ylabel("Rate [PHz]")
+    legend()
+    title(L"Ionization rate of argon in by $\hbar\omega$ = 1.5 eV")
+    tight_layout()
+    savefig_f("ion-rate")
+  #+END_SRC
+
+  #+RESULTS:
+  [[file:../figures/ion-rate.svg]]
