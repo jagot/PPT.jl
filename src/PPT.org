@@ -1,0 +1,5 @@
+#+TITLE: PPT.jl
+#+AUTHOR: Stefanos Carlström
+#+EMAIL: stefanos.carlstrom@gmail.com
+
+#+PROPERTY: header-args:julia :session *julia-PPT*

@@ -6,3 +6,5 @@
 [[https://coveralls.io/github/jagot/PPT.jl?branch=master][https://coveralls.io/repos/github/jagot/PPT.jl/badge.svg?branch=master]]
 [[http://codecov.io/gh/jagot/PPT.jl][http://codecov.io/gh/jagot/PPT.jl/branch/master/graph/badge.svg]]
 
+
+This is a [[https://github.com/jagot/LiterateOrg.jl][LiterateOrg.jl]] project. The documentation is found [[file:src/PPT.org][within the code]].
