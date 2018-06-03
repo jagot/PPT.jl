@@ -6,5 +6,10 @@
 [[https://coveralls.io/github/jagot/PPT.jl?branch=master][https://coveralls.io/repos/github/jagot/PPT.jl/badge.svg?branch=master]]
 [[http://codecov.io/gh/jagot/PPT.jl][http://codecov.io/gh/jagot/PPT.jl/branch/master/graph/badge.svg]]
 
+This package calculates ionization rates according to the [[http://www.jetp.ac.ru/cgi-bin/dn/e_023_05_0924.pdf][PPT]] and [[http://www.jetp.ac.ru/cgi-bin/dn/e_064_06_1191.pdf][ADK]]
+formalisms:
 
-This is a [[https://github.com/jagot/LiterateOrg.jl][LiterateOrg.jl]] project. The documentation is found [[file:src/PPT.org][within the code]].
+[[file:./figures/ion-rate.svg]]
+
+This is a [[https://github.com/jagot/LiterateOrg.jl][LiterateOrg.jl]] project. The documentation, as well as [[file:src/PPT.org::*EXAMPLE%20Usage][usage
+  examples]] are found [[file:src/PPT.org][within the code]].

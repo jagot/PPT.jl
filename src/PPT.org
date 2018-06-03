@@ -74,11 +74,11 @@
     # Just after Eq. (56)
     ppt_β(γ) = 2γ/sqrt(1+γ^2)
     # Eq. (34)
-    α(γ) = 2asinh.(γ) - ppt_β.(γ)
+    α(γ) = 2asinh(γ) - ppt_β(γ)
     # Eq. (33)
-    g(γ) = 3./(2γ).*((1+1./(2γ.^2)).*asinh.(γ) - (sqrt.(1+γ.^2))./(2γ))
+    g(γ) = 3/(2γ)*((1+1/(2γ^2))*asinh(γ) - (√(1+γ^2))/(2γ))
     # Eq. (26), Iₚ = κ²/2
-    ν(element, I, ω) = Iₚ[element]/ω * (1.0 + 1./2keldysh.(element,I,ω).^2)
+    ν(element, I, ω) = Iₚ[element]/ω * (1.0 + 1/2keldysh(element,I,ω)^2)
 
     # Eq. (56)
     function w(m,x,eps=1e-7)
@@ -88,14 +88,14 @@
 
     # Eq. (55)
     function A(m,element,I,ω, tol = 1e-5)
-        γ = keldysh.(element,I,ω)
+        γ = keldysh(element,I,ω)
         nν = ν(element, I, ω)
         S = 0
         dS = Inf
         κ = ceil(Int, nν)
         ii = 0
         α_γ = α(γ)
-        ppt_β_γ = ppt_β.(γ)
+        ppt_β_γ = ppt_β(γ)
         while dS/S > tol
             dk = κ - nν
             dS = exp(-α_γ*dk)*w(m,√(ppt_β_γ*dk))
@@ -122,22 +122,21 @@
     to the Perelomov–Popov–Terent'ev formalism over the intensity range `I`
     (in atomic units), for a photon energy `ω` (in atomic units), and the
     projection `m` of the initial orbital angular momentum."""
-    function ppt(element::Symbol, I::AbstractVector{<:Real}, ω::Real, m::Integer=0)
+    function ppt(element::Symbol, I::Real, ω::Real, m::Integer=0)
         check_element(element)
-        E = sqrt.(I)
-        γ = keldysh.(element,I,ω)
+        E = √(I)
+        γ = keldysh(element,I,ω)
 
         # Eq. (54)
         ns = nstar[element]
-        pre = sqrt(3/2pi)*C²(ns,ns-1)*f(ℓ[element],m)*Iₚ[element]
+        pre = √(3/2pi)*C²(ns,ns-1)*f(ℓ[element],m)*Iₚ[element]
         Et = Ẽ(E, Iₚ[element])
 
-        Am = A.(0, element, I, ω)
+        Am = A(0, element, I, ω)
 
         # Eq. (54)
-        w = pre*Et.^(-(2ns-abs(m)-3/2)).*(1+γ.^2).^(-ns+abs(m)/2+3/4).*Am.*exp.(-g(γ)./(3Et))
-        w[isnan.(w)] = 0
-        w
+        w = pre*Et^(-(2ns-abs(m)-3/2))*(1+γ^2)^(-ns+abs(m)/2+3/4)*Am*exp(-g(γ)/(3Et))
+        isnan(w) ? 0 : w
     end
 
     """
@@ -147,8 +146,8 @@
     to the Perelomov–Popov–Terent'ev formalism over the intensity range `I`
     (in SI units, W/cm²), for a photon energy `ω` (in SI units, energy),
     and the projection `m` of the initial orbital angular momentum."""
-    ppt(element::Symbol, I::AbstractVector{<:Intensity}, ω::Unitful.Energy, m::Integer=0) =
-        ppt(element, atomic_units.(I), atomic_units(ω), m)/2.41888430u"as"
+    ppt(element::Symbol, I::Intensity, ω::Unitful.Energy, m::Integer=0) =
+        ppt(element, atomic_units(I), atomic_units(ω), m)/2.41888430u"as" |> u"Hz"
 
     export ppt
   #+END_SRC
@@ -165,16 +164,15 @@
     to the Ammosov–Delone–Kraĭnov formalism over the intensity range `I`
     (in atomic units), for a photon energy `ω` (in atomic units), and the
     projection `m` of the initial orbital angular momentum."""
-    function adk(element::Symbol, I::AbstractVector{<:Real}, ω::Real, m::Integer=0)
+    function adk(element::Symbol, I::Real, ω::Real, m::Integer=0)
         check_element(element)
-        E = sqrt.(I)
+        E = √(I)
         # Approximately Eq. (1), ADK, needs to be checked
         ns = nstar[element]
         pre = C²(ns,ns-1)*f(ℓ[element],m)*Iₚ[element]
         Et = Ẽ(E, Iₚ[element])
-        w = pre*Et.^(-(2ns-abs(m)-1)).*exp.(-1.0./(3Et))
-        w[isnan.(w)] = 0
-        w
+        w = pre*Et^(-(2ns-abs(m)-1))*exp(-1.0/(3Et))
+        isnan(w) ? 0 : w
     end
 
     """
@@ -184,8 +182,8 @@
     to the Ammosov–Delone–Kraĭnov formalism over the intensity range `I`
     (in SI units, W/cm²), for a photon energy `ω` (in SI units, energy),
     and the projection `m` of the initial orbital angular momentum."""
-    adk(element::Symbol, I::AbstractVector{<:Intensity}, ω::Unitful.Energy, m::Integer=0) =
-        adk(element, atomic_units.(I), atomic_units(ω), m)/2.41888430u"as" .|> u"Hz"
+    adk(element::Symbol, I::Intensity, ω::Unitful.Energy, m::Integer=0) =
+        adk(element, atomic_units(I), atomic_units(ω), m)/2.41888430u"as" |> u"Hz"
 
     export adk
   #+END_SRC
@@ -233,7 +231,7 @@
                 rate ∉ [:ppt, :adk] && error("Unknown ionization rate, $rate")
                 rate_fun = Dict(:ppt => ppt, :adk => adk)[rate]
                 dt = (t[2]-t[1])
-                1.0 - exp.(-cumsum(rate_fun(element, I, ω, m))*dt .|> NoUnits)
+                1.0 - exp.(-cumsum(rate_fun.(element, I, ω, m))*dt .|> NoUnits)
             end
         end
     end
@@ -250,8 +248,8 @@
      I = logspace(12,15, 1001)*u"W/cm^2";
      ω = 1.5u"eV"
 
-     ppt_rate = ppt(:argon, I, ω, 0) .|> u"PHz";
-     adk_rate = adk(:argon, I, ω, 0) .|> u"PHz";
+     ppt_rate = ppt.(:argon, I, ω, 0) .|> u"PHz";
+     adk_rate = adk.(:argon, I, ω, 0) .|> u"PHz";
    #+END_SRC
 
    #+RESULTS:
