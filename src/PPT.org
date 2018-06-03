@@ -27,17 +27,16 @@
   : atomic_units (generic function with 4 methods)
 
 * Atomic data
-  #+BEGIN_SRC julia :results verbatim
+  #+BEGIN_SRC julia
     Iₚ = Dict(:argon => 15.7596/27.211, :neon => 21.5645/27.211, :helium => 24.587387/27.211)
     nstar = Dict(k => 1/√(2v) for (k,v) in Iₚ)
     ℓ = Dict(:argon => 1, :neon => 1, :helium => 1); # Is 1 right for helium?
+
+    check_element(element::Symbol) = element ∈ keys(Iₚ) || error("Atomic data not present for element $(element)")
   #+END_SRC
 
   #+RESULTS:
-  : Dict{Symbol,Int64} with 3 entries:
-  :   :neon => 1
-  :   :argon => 1
-  :   :helium => 1
+  : check_element (generic function with 1 method)
 
 * Minor helper functions
   All functions work in atomic units, unless otherwise
@@ -123,6 +122,7 @@
     (in atomic units), for a photon energy `ω` (in atomic units), and the
     projection `m` of the initial orbital angular momentum."""
     function ppt(element::Symbol, I::AbstractVector{<:Real}, ω::Real, m::Integer=0)
+        check_element(element)
         E = sqrt.(I)
         γ = keldysh.(element,I,ω)
 
@@ -163,6 +163,7 @@
     (in atomic units), for a photon energy `ω` (in atomic units), and the
     projection `m` of the initial orbital angular momentum."""
     function adk(element::Symbol, I::AbstractVector{<:Real}, ω::Real, m::Integer=0)
+        check_element(element)
         E = sqrt.(I)
         ns = nstar[element]
         pre = C²(ns,ns-1)*f(ℓ[element],m)*Iₚ[element]
