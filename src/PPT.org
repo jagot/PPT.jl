@@ -106,6 +106,7 @@
         (4/√(3π))/factorial(abs(m)) * γ^2/(1+γ^2) * S
     end
 
+    # Eq. (5) + (54)
     Ẽ(E₀, Iₚ) = E₀/(2(2Iₚ)^1.5)
   #+END_SRC
 
@@ -126,12 +127,14 @@
         E = sqrt.(I)
         γ = keldysh.(element,I,ω)
 
+        # Eq. (54)
         ns = nstar[element]
         pre = sqrt(3/2pi)*C²(ns,ns-1)*f(ℓ[element],m)*Iₚ[element]
         Et = Ẽ(E, Iₚ[element])
 
         Am = A.(0, element, I, ω)
 
+        # Eq. (54)
         w = pre*Et.^(-(2ns-abs(m)-3/2)).*(1+γ.^2).^(-ns+abs(m)/2+3/4).*Am.*exp.(-g(γ)./(3Et))
         w[isnan.(w)] = 0
         w
@@ -165,6 +168,7 @@
     function adk(element::Symbol, I::AbstractVector{<:Real}, ω::Real, m::Integer=0)
         check_element(element)
         E = sqrt.(I)
+        # Approximately Eq. (1), ADK, needs to be checked
         ns = nstar[element]
         pre = C²(ns,ns-1)*f(ℓ[element],m)*Iₚ[element]
         Et = Ẽ(E, Iₚ[element])
