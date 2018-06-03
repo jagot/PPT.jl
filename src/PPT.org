@@ -40,7 +40,7 @@
 
 * Minor helper functions
   All functions work in atomic units, unless otherwise
-  specified. Equation references are wrt to 
+  specified. Equation references are wrt to
 
   - Perelomov, A., Popov, V., & Terent'ev, M. (1966). Ionization of
     atoms in an alternating electric field. Soviet Physics---Journal of
@@ -168,7 +168,7 @@
         ns = nstar[element]
         pre = C²(ns,ns-1)*f(ℓ[element],m)*Iₚ[element]
         Et = Ẽ(E, Iₚ[element])
-        w = pre*Et.^(-(2ns-abs(m)-1)).*exp(-1.0./(3Et))
+        w = pre*Et.^(-(2ns-abs(m)-1)).*exp.(-1.0./(3Et))
         w[isnan.(w)] = 0
         w
     end
@@ -190,52 +190,133 @@
   : nothing
 
 * Ionization probability
+  If we have an intensity-dependent ionization rate, \(f(I)\), the
+  rate equation reads
+
+  \[\dot{q} = -f(I)q,\quad q_0=1.\]
+
+  If the intensity is time-dependent, such as in a laser pulse, we
+  integrate the rate equation over the intensity profile, assuming no
+  initial ionization:
+
+  \[q(t) =
+  \exp\left\{
+  -\int_{-\infty}^t\mathrm{d}t f[I(t)]
+  \right\}.\]
+
+  Since the probability of being ionized is \(\tilde{q} = 1 - q\), we
+  have
+
+  \[\tilde{q}(t) = 1 - \exp\left\{
+  -\int_{-\infty}^t\mathrm{d}t f[I(t)]
+  \right\}.\]
+
   #+BEGIN_SRC julia
-    function probability(rate::Function,
-                         t, E, ω,
-                         element, m)
-        dt = (t[2]-t[1])*2π/ω
-        1.0 - exp(-sum(rate(element, abs2.(E), ω, m))*dt)
+    for (TimeType, IntensityType, EnergyType) in
+        [(Unitful.Time, Intensity, Unitful.Energy),
+         (Real,Real,Real)]
+        @eval begin
+            """
+        ionization_probability(rate, t, I, ω, element[, m])
+
+    Calculate the time-resolved ionization probability of `element`
+    subjected to a laser pulse of energy `ω` and a temporal intensity
+    profile `I`."""
+            function ionization_probability(rate::Symbol,
+                                            t::AbstractVector{<:$(TimeType)},
+                                            I::AbstractVector{<:$(IntensityType)}, ω::$(EnergyType),
+                                            element::Symbol, m::Integer = 0)
+                rate ∉ [:ppt, :adk] && error("Unknown ionization rate, $rate")
+                rate_fun = Dict(:ppt => ppt, :adk => adk)[rate]
+                dt = (t[2]-t[1])
+                1.0 - exp.(-cumsum(rate_fun(element, I, ω, m))*dt .|> NoUnits)
+            end
+        end
     end
+
+    export ionization_probability
   #+END_SRC
 
   #+RESULTS:
-  : probability (generic function with 1 method)
+  : nothing
 
 * EXAMPLE Usage
-  #+BEGIN_SRC julia
-    I = logspace(12,15, 1001)*u"W/cm^2";
-    ω = 1.5u"eV"
+** Ionization rate
+   #+BEGIN_SRC julia
+     I = logspace(12,15, 1001)*u"W/cm^2";
+     ω = 1.5u"eV"
 
-    ppt_rate = ppt(:argon, I, ω, 0) .|> u"PHz";
-    adk_rate = adk(:argon, I, ω, 0) .|> u"PHz";
-  #+END_SRC
+     ppt_rate = ppt(:argon, I, ω, 0) .|> u"PHz";
+     adk_rate = adk(:argon, I, ω, 0) .|> u"PHz";
+   #+END_SRC
 
-  #+RESULTS:
+   #+RESULTS:
 
-  #+BEGIN_SRC julia :exports results :results value file
-    using PyPlot
+   #+BEGIN_SRC julia :exports results :results value file
+     using PyPlot
+     import Jagot.plotting: no_tick_labels
 
-    function savefig_f(filename)
-        path = joinpath("..", "figures", "$(filename).svg")
-        mkpath(dirname(path))
-        savefig(path, transparent=true)
-        path
-    end
+     function savefig_f(filename)
+         path = joinpath("..", "figures", "$(filename).svg")
+         mkpath(dirname(path))
+         savefig(path, transparent=true)
+         path
+     end
 
-    figure("Ionization rate")
-    clf()
-    loglog(I./u"W/cm^2" .|> NoUnits, ppt_rate./u"PHz" .|> NoUnits, label="PPT")
-    yl = ylim()
-    loglog(I./u"W/cm^2" .|> NoUnits, adk_rate./u"PHz" .|> NoUnits, label="ADK")
-    ylim(yl...)
-    xlabel(L"Intensity [W/cm$^2$]")
-    ylabel("Rate [PHz]")
-    legend()
-    title(L"Ionization rate of argon in by $\hbar\omega$ = 1.5 eV")
-    tight_layout()
-    savefig_f("ion-rate")
-  #+END_SRC
+     figure("Ionization rate")
+     clf()
+     loglog(I./u"W/cm^2" .|> NoUnits, ppt_rate./u"PHz" .|> NoUnits, label="PPT")
+     yl = ylim()
+     loglog(I./u"W/cm^2" .|> NoUnits, adk_rate./u"PHz" .|> NoUnits, label="ADK")
+     ylim(yl...)
+     xlabel(L"Intensity [W/cm$^2$]")
+     ylabel("Rate [PHz]")
+     legend()
+     title(L"Ionization rate of argon in by $\hbar\omega$ = 1.5 eV")
+     tight_layout()
+     savefig_f("ion-rate")
+   #+END_SRC
 
-  #+RESULTS:
-  [[file:../figures/ion-rate.svg]]
+   #+RESULTS:
+   [[file:../figures/ion-rate.svg]]
+
+** Ionization probability
+   #+BEGIN_SRC julia
+     intensity(E::ElectricField) = u"ε0"*u"c"/2*E^2 |> u"W"/u"cm"^2
+
+     t = linspace(-1,1,1001)*10u"fs"
+     ω = 1.5u"eV"
+
+     τ = 6u"fs"
+     σ = τ/(2*√(2log(2)))
+
+     E = 6e10u"V/m" * exp.(-t.^2./2σ^2) .* sin.(ω*t/u"ħ");
+     I = intensity.(E);
+     ppt_prob = ionization_probability(:ppt, t, I, ω, :argon);
+     adk_prob = ionization_probability(:adk, t, I, ω, :argon);
+   #+END_SRC
+
+   #+RESULTS:
+
+   #+BEGIN_SRC julia :exports results :results value file
+     figure("ionization probability")
+     clf()
+     subplot(311)
+     plot(t./u"fs" .|> NoUnits, E./u"V/m" .|> NoUnits)
+     no_tick_labels()
+     ylabel(L"$E$ [V/m]")
+     subplot(312)
+     plot(t./u"fs" .|> NoUnits, I./u"W/cm^2" .|> NoUnits)
+     no_tick_labels()
+     ylabel(L"$I$ [W/cm$^2$]")
+     subplot(313)
+     plot(t./u"fs" .|> NoUnits, ppt_prob, label="PPT")
+     plot(t./u"fs" .|> NoUnits, adk_prob, label="ADK")
+     legend()
+     xlabel(L"$t$ [fs]")
+     ylabel("Ionization probability")
+     savefig_f("ionization-probability")
+   #+END_SRC
+
+   #+RESULTS:
+   [[file:../figures/ionization-probability.svg]]
